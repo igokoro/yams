@@ -1,49 +1,16 @@
-var express = require('express');
+let express = require('express');
+let path = require('path')
+let yaml = require('js-yaml');
+let fs = require('fs');
+let expectations = require('./expectations')
+let mockServerClient = require('mockserver-client').mockServerClient("localhost", 1080);
+
+let storagePath = process.env.STORAGE;
+
 var router = express.Router();
-var path = require('path')
-
-yaml = require('js-yaml');
-fs = require('fs');
-
-var mockServerClient = require('mockserver-client').mockServerClient;
-
-var storagePath = process.env.STORAGE;
-
-const toArrayValues = (dict) => Object.fromEntries(Object.entries(dict).map(([k, v]) => [k, [v]]))
-
-const request = function (requestInstructions) {
-    return {
-        method: requestInstructions.method,
-        path: requestInstructions.path,
-        queryStringParameters: requestInstructions.params == null ? null : toArrayValues(requestInstructions.params),
-        headers: requestInstructions.headers == null ? {} : toArrayValues(requestInstructions.headers),
-        body: requestInstructions.body
-    }
-}
-
-const response = function (responseInstructions) {
-    return {
-        statusCode: responseInstructions.code,
-        headers: responseInstructions.headers == null ? null : toArrayValues(responseInstructions.headers),
-        cookies: responseInstructions.cookies,
-        delay: {
-            timeUnit: "SECONDS",
-            value: responseInstructions.delay
-        },
-        body: responseInstructions.body
-    }
-}
-
-const expectation = function (instructions) {
-    return instructions.map(instruction => ({
-        httpRequest: request(instruction),
-        httpResponse: response(instruction.response)
-    }))
-}
-
 router.get('/load/scenario/:scenarioId', function (req, res, next) {
     var scenarioId = req.params['scenarioId'];
-    console.log(`loading scenario: ${req.params['scenarioId']}`)
+    console.log(`loading scenario: ${scenarioId}`)
     var scenario = yaml.safeLoad(fs.readFileSync(path.join(storagePath, `${scenarioId}.yaml`), 'utf8'));
     console.log(scenario);
     for (const capture of scenario) {
@@ -52,9 +19,7 @@ router.get('/load/scenario/:scenarioId', function (req, res, next) {
         var mock = yaml.safeLoad(fs.readFileSync(mockPath, 'utf8'));
 
         console.log(mock)
-
-        var server = mockServerClient("localhost", 1080);
-        expectation(mock).forEach(instruction => server.mockAnyResponse(instruction))
+        expectations.prepare(mock).forEach(instruction => mockServerClient.mockAnyResponse(instruction))
     }
     res.send('loaded');
 });
